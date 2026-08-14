@@ -24,6 +24,8 @@ export type ProfileRow = {
   missions: Record<MissionId, number>;
   claimed_missions: string[];
   chat_sent: number;
+  active_quiz_id: string | null;
+  active_quiz_started_at: string | null;
 };
 
 export type GameSnapshot = { profile: ProfileRow; owned: string[] };
