@@ -1,10 +1,32 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import type { Session, User } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
 import { BONUS_ORDER, FREE_ORDER, QUIZZES, type Difficulty, type Quiz } from "./quizzes";
-import { AVATARS, FRAMES, TITLES, TEAMS, findItem, type TeamId } from "./catalog";
+import { AVATARS, FRAMES, TITLES, TEAMS, type TeamId } from "./catalog";
+import { EMPTY_MISSIONS, type MissionId } from "./missions";
+import {
+  answerQuiz as answerQuizFn,
+  buyItem as buyItemFn,
+  changeNickname as changeNicknameFn,
+  chooseTeam as chooseTeamFn,
+  claimMission as claimMissionFn,
+  equipItem as equipItemFn,
+  fetchGameState,
+  registerChat as registerChatFn,
+  spinWheel as spinWheelFn,
+  watchVideo as watchVideoFn,
+} from "./game.functions";
 
-const STORAGE_KEY = "quiz-squad-state-v1";
-
-export type MissionId = "play3" | "correct2" | "spin" | "chat";
+export type { MissionId };
 
 export type GameState = {
   nickname: string;
@@ -14,7 +36,7 @@ export type GameState = {
   owned: string[];
   points: number;
   credits: number;
-  day: string; // ISO date of the current daily cycle
+  day: string | null;
   freeUsed: number;
   bonusUnlocked: number;
   bonusUsed: number;
@@ -24,18 +46,19 @@ export type GameState = {
   wheelSpunDay: string | null;
   streakDays: number;
   missions: Record<MissionId, number>;
-  chatSent: string[];
+  claimedMissions: string[];
+  chatSent: number;
 };
 
-const DEFAULT_STATE: GameState = {
+const EMPTY_STATE: GameState = {
   nickname: "Sfidante",
   avatarId: "av-fox",
   frameId: "fr-basic",
   titleId: "ti-novice",
   owned: ["av-fox", "fr-basic", "ti-novice"],
   points: 0,
-  credits: 120,
-  day: "",
+  credits: 0,
+  day: null,
   freeUsed: 0,
   bonusUnlocked: 0,
   bonusUsed: 0,
@@ -43,9 +66,10 @@ const DEFAULT_STATE: GameState = {
   team: null,
   teamWeek: null,
   wheelSpunDay: null,
-  streakDays: 3,
-  missions: { play3: 0, correct2: 0, spin: 0, chat: 0 },
-  chatSent: [],
+  streakDays: 0,
+  missions: { ...EMPTY_MISSIONS },
+  claimedMissions: [],
+  chatSent: 0,
 };
 
 export function todayKey(d = new Date()) {
@@ -53,8 +77,8 @@ export function todayKey(d = new Date()) {
 }
 
 export function weekKey(d = new Date()) {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = (date.getUTCDay() + 6) % 7; // monday = 0
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = (date.getUTCDay() + 6) % 7;
   date.setUTCDate(date.getUTCDate() - day);
   return date.toISOString().slice(0, 10);
 }
@@ -63,8 +87,60 @@ export function isMonday(d = new Date()) {
   return d.getDay() === 1;
 }
 
+type Snapshot = {
+  profile: {
+    id: string;
+    nickname: string;
+    avatar_id: string;
+    frame_id: string;
+    title_id: string;
+    points: number;
+    credits: number;
+    day: string | null;
+    free_used: number;
+    bonus_unlocked: number;
+    bonus_used: number;
+    answered_quiz_ids: string[];
+    team: TeamId | null;
+    team_week: string | null;
+    wheel_spun_day: string | null;
+    streak_days: number;
+    missions: Record<string, number>;
+    claimed_missions: string[];
+    chat_sent: number;
+  };
+  owned: string[];
+};
+
+function toState(snap: Snapshot): GameState {
+  const p = snap.profile;
+  return {
+    nickname: p.nickname,
+    avatarId: p.avatar_id,
+    frameId: p.frame_id,
+    titleId: p.title_id,
+    owned: snap.owned,
+    points: p.points,
+    credits: p.credits,
+    day: p.day,
+    freeUsed: p.free_used,
+    bonusUnlocked: p.bonus_unlocked,
+    bonusUsed: p.bonus_used,
+    answeredQuizIds: p.answered_quiz_ids ?? [],
+    team: p.team,
+    teamWeek: p.team_week,
+    wheelSpunDay: p.wheel_spun_day,
+    streakDays: p.streak_days,
+    missions: { ...EMPTY_MISSIONS, ...(p.missions ?? {}) } as Record<MissionId, number>,
+    claimedMissions: p.claimed_missions ?? [],
+    chatSent: p.chat_sent,
+  };
+}
+
 type Ctx = {
   hydrated: boolean;
+  authReady: boolean;
+  user: User | null;
   state: GameState;
   avatar: string;
   frameClass: string;
@@ -75,60 +151,63 @@ type Ctx = {
   nextQuiz: Quiz | null;
   nextDifficulty: Difficulty | null;
   teamLocked: boolean;
-  answerQuiz: (quiz: Quiz, correct: boolean) => void;
-  watchVideo: () => void;
-  buy: (itemId: string) => boolean;
-  equip: (itemId: string) => void;
-  setNickname: (name: string) => void;
-  chooseTeam: (team: TeamId) => void;
-  spinWheel: () => number;
-  sendChat: (text: string) => void;
+  refresh: () => Promise<void>;
+  answer: (quiz: Quiz, optionIndex: number) => Promise<{ correct: boolean; points: number; credits: number }>;
+  watchVideo: () => Promise<void>;
+  buy: (itemId: string) => Promise<void>;
+  equip: (itemId: string) => Promise<void>;
+  setNickname: (name: string) => Promise<void>;
+  chooseTeam: (team: TeamId) => Promise<void>;
+  spinWheel: () => Promise<number>;
+  sendChat: () => Promise<void>;
+  claimMission: (missionId: MissionId) => Promise<{ reward: number; points: number }>;
+  signOut: () => Promise<void>;
 };
 
 const GameContext = createContext<Ctx | null>(null);
 
-function normalize(state: GameState): GameState {
-  const today = todayKey();
-  let next = state;
-  if (state.day !== today) {
-    next = {
-      ...state,
-      day: today,
-      freeUsed: 0,
-      bonusUnlocked: 0,
-      bonusUsed: 0,
-      missions: { play3: 0, correct2: 0, spin: 0, chat: 0 },
-    };
-  }
-  if (state.teamWeek !== weekKey()) {
-    next = { ...next, team: null, teamWeek: null };
-  }
-  return next;
-}
-
 export function GameProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<GameState>(DEFAULT_STATE);
+  const [state, setState] = useState<GameState>(EMPTY_STATE);
   const [hydrated, setHydrated] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const loadedFor = useRef<string | null>(null);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      const parsed = raw ? ({ ...DEFAULT_STATE, ...JSON.parse(raw) } as GameState) : DEFAULT_STATE;
-      setState(normalize(parsed));
-    } catch {
-      setState(normalize(DEFAULT_STATE));
-    }
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session: Session | null) => {
+      setUser(session?.user ?? null);
+      setAuthReady(true);
+    });
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+      setAuthReady(true);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const snap = (await fetchGameState()) as Snapshot;
+    setState(toState(snap));
     setHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      /* storage unavailable */
+    if (!authReady) return;
+    if (!user) {
+      loadedFor.current = null;
+      setState(EMPTY_STATE);
+      setHydrated(false);
+      return;
     }
-  }, [state, hydrated]);
+    if (loadedFor.current === user.id) return;
+    loadedFor.current = user.id;
+    void refresh().catch((error) => {
+      console.error(error);
+      loadedFor.current = null;
+    });
+  }, [authReady, user, refresh]);
+
+  const apply = useCallback((snap: Snapshot) => setState(toState(snap)), []);
 
   const ticketsLeft = Math.max(0, 5 - state.freeUsed);
   const bonusLeft = Math.max(0, state.bonusUnlocked - state.bonusUsed);
@@ -142,96 +221,83 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const nextQuiz = useMemo(() => {
     if (!nextDifficulty) return null;
-    return (
-      QUIZZES.find((q) => q.difficulty === nextDifficulty && !state.answeredQuizIds.includes(q.id)) ?? null
-    );
+    return QUIZZES.find((q) => q.difficulty === nextDifficulty && !state.answeredQuizIds.includes(q.id)) ?? null;
   }, [nextDifficulty, state.answeredQuizIds]);
 
-  const answerQuiz = useCallback((quiz: Quiz, correct: boolean) => {
-    setState((s) => {
-      if (s.answeredQuizIds.includes(quiz.id)) return s;
-      const usingFree = s.freeUsed < 5;
-      return {
-        ...s,
-        freeUsed: usingFree ? s.freeUsed + 1 : s.freeUsed,
-        bonusUsed: usingFree ? s.bonusUsed : s.bonusUsed + 1,
-        answeredQuizIds: [...s.answeredQuizIds, quiz.id],
-        points: s.points + (correct ? quiz.points : 0),
-        credits: s.credits + (correct ? quiz.credits : 0),
-        missions: {
-          ...s.missions,
-          play3: s.missions.play3 + 1,
-          correct2: s.missions.correct2 + (correct ? 1 : 0),
-        },
+  const answer = useCallback(
+    async (quiz: Quiz, optionIndex: number) => {
+      const res = (await answerQuizFn({ data: { quizId: quiz.id, optionIndex } })) as {
+        correct: boolean;
+        points: number;
+        credits: number;
+        state: Snapshot;
       };
-    });
-  }, []);
+      apply(res.state);
+      return { correct: res.correct, points: res.points, credits: res.credits };
+    },
+    [apply],
+  );
 
-  const watchVideo = useCallback(() => {
-    setState((s) => {
-      if (s.freeUsed < 5 || s.bonusUnlocked >= 3) return s;
-      return { ...s, bonusUnlocked: s.bonusUnlocked + 1 };
-    });
-  }, []);
+  const watchVideo = useCallback(async () => {
+    apply((await watchVideoFn()) as Snapshot);
+  }, [apply]);
 
-  const buy = useCallback((itemId: string) => {
-    let ok = false;
-    setState((s) => {
-      const item = findItem(itemId);
-      if (!item || item.price < 0 || s.credits < item.price) return s;
-      if (item.kind !== "nickname" && s.owned.includes(itemId)) return s;
-      ok = true;
-      return {
-        ...s,
-        credits: s.credits - item.price,
-        owned: item.kind === "nickname" ? s.owned : [...s.owned, itemId],
+  const buy = useCallback(
+    async (itemId: string) => {
+      apply((await buyItemFn({ data: { itemId } })) as Snapshot);
+    },
+    [apply],
+  );
+
+  const equip = useCallback(
+    async (itemId: string) => {
+      apply((await equipItemFn({ data: { itemId } })) as Snapshot);
+    },
+    [apply],
+  );
+
+  const setNickname = useCallback(
+    async (name: string) => {
+      apply((await changeNicknameFn({ data: { nickname: name } })) as Snapshot);
+    },
+    [apply],
+  );
+
+  const chooseTeamAction = useCallback(
+    async (team: TeamId) => {
+      apply((await chooseTeamFn({ data: { team } })) as Snapshot);
+    },
+    [apply],
+  );
+
+  const spinWheel = useCallback(async () => {
+    const res = (await spinWheelFn()) as { reward: number; state: Snapshot };
+    apply(res.state);
+    return res.reward;
+  }, [apply]);
+
+  const sendChat = useCallback(async () => {
+    apply((await registerChatFn()) as Snapshot);
+  }, [apply]);
+
+  const claimMission = useCallback(
+    async (missionId: MissionId) => {
+      const res = (await claimMissionFn({ data: { missionId } })) as {
+        reward: number;
+        points: number;
+        state: Snapshot;
       };
-    });
-    return ok;
-  }, []);
+      apply(res.state);
+      return { reward: res.reward, points: res.points };
+    },
+    [apply],
+  );
 
-  const equip = useCallback((itemId: string) => {
-    setState((s) => {
-      const item = findItem(itemId);
-      if (!item || !s.owned.includes(itemId)) return s;
-      if (item.kind === "avatar") return { ...s, avatarId: itemId };
-      if (item.kind === "frame") return { ...s, frameId: itemId };
-      if (item.kind === "title") return { ...s, titleId: itemId };
-      return s;
-    });
-  }, []);
-
-  const setNickname = useCallback((name: string) => {
-    const clean = name.replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 16);
-    if (clean.trim().length < 3) return;
-    setState((s) => ({ ...s, nickname: clean.trim() }));
-  }, []);
-
-  const chooseTeam = useCallback((team: TeamId) => {
-    setState((s) => (s.team ? s : { ...s, team, teamWeek: weekKey() }));
-  }, []);
-
-  const spinWheel = useCallback(() => {
-    const rewards = [5, 10, 15, 20, 30, 50];
-    const reward = rewards[Math.floor(Math.random() * rewards.length)] ?? 5;
-    setState((s) => {
-      if (s.wheelSpunDay === todayKey()) return s;
-      return {
-        ...s,
-        wheelSpunDay: todayKey(),
-        credits: s.credits + reward,
-        missions: { ...s.missions, spin: 1 },
-      };
-    });
-    return reward;
-  }, []);
-
-  const sendChat = useCallback((text: string) => {
-    setState((s) => ({
-      ...s,
-      chatSent: [...s.chatSent, text].slice(-40),
-      missions: { ...s.missions, chat: 1 },
-    }));
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setState(EMPTY_STATE);
+    setHydrated(false);
   }, []);
 
   const avatar = AVATARS.find((a) => a.id === state.avatarId)?.value ?? "🦊";
@@ -240,6 +306,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const value: Ctx = {
     hydrated,
+    authReady,
+    user,
     state,
     avatar,
     frameClass,
@@ -250,14 +318,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
     nextQuiz,
     nextDifficulty,
     teamLocked: state.team !== null,
-    answerQuiz,
+    refresh,
+    answer,
     watchVideo,
     buy,
     equip,
     setNickname,
-    chooseTeam,
+    chooseTeam: chooseTeamAction,
     spinWheel,
     sendChat,
+    claimMission,
+    signOut,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
