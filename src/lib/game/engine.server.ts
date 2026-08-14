@@ -57,6 +57,8 @@ async function dailyReset(row: ProfileRow): Promise<ProfileRow> {
       missions: EMPTY_MISSIONS,
       claimed_missions: [],
       chat_sent: 0,
+      active_quiz_id: null,
+      active_quiz_started_at: null,
       streak_days: row.day ? Math.min(7, row.streak_days + 1) : 1,
     });
   }
