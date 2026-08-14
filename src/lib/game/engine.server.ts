@@ -28,7 +28,12 @@ export type ProfileRow = {
   active_quiz_started_at: string | null;
 };
 
-export type GameSnapshot = { profile: ProfileRow; owned: string[] };
+export type GameSnapshot = {
+  profile: ProfileRow;
+  owned: string[];
+  settings: AppSettings;
+  isAdmin: boolean;
+};
 
 export const DEFAULT_ITEMS = ["av-fox", "fr-basic", "ti-novice"];
 
@@ -115,7 +120,8 @@ export async function loadProfile(userId: string, fallbackNickname: string): Pro
 }
 
 export async function snapshot(userId: string, profile: ProfileRow): Promise<GameSnapshot> {
-  return { profile, owned: await getOwned(userId) };
+  const [owned, settings, admin] = await Promise.all([getOwned(userId), getSettings(), isAdmin(userId)]);
+  return { profile, owned, settings, isAdmin: admin };
 }
 
 export function sanitizeNickname(raw: string) {
