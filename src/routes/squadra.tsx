@@ -21,7 +21,7 @@ export const Route = createFileRoute("/squadra")({
 
 function TeamPage() {
   const { state, chooseTeam, hydrated } = useGame();
-  const [watching, setWatching] = useState(false);
+  const [busy, setBusy] = useState<TeamId | null>(null);
   const monday = isMonday();
   const proposed = assignedTeam();
   const canSwap = swapAllowed();
@@ -46,85 +46,83 @@ function TeamPage() {
     );
   }
 
-  function pick(team: TeamId, message: string) {
-    chooseTeam(team);
-    toast.success(message);
+  async function pick(team: TeamId, message: string, delay = 0) {
+    setBusy(team);
+    try {
+      if (delay) {
+        toast("Video in riproduzione…");
+        await new Promise((r) => window.setTimeout(r, delay));
+      }
+      await chooseTeam(team);
+      toast.success(message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Scelta non riuscita");
+    } finally {
+      setBusy(null);
+    }
   }
 
-  if (monday) {
-    return (
-      <div className="space-y-5">
-        <header>
-          <h1 className="text-2xl">Lunedì: scelta libera</h1>
-          <p className="text-sm text-muted-foreground">
-            Scegli la tua squadra: sarà bloccata per tutta la settimana.
-          </p>
-        </header>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {(Object.values(TEAMS) as (typeof TEAMS)[TeamId][]).map((t) => (
-            <button
-              key={t.id}
-              onClick={() => pick(t.id, `Benvenuto nei ${t.name}!`)}
-              className="card-fun group p-6 text-center transition-transform hover:-translate-y-1"
-            >
-              <div className={cn("mx-auto grid h-20 w-20 place-items-center rounded-full text-4xl", t.colorClass)}>
-                {t.emoji}
-              </div>
-              <h2 className="mt-3 text-xl">{t.name}</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Tocca per unirti</p>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const other: TeamId = proposed === "fulmini" ? "comete" : "fulmini";
-  const pt = TEAMS[proposed];
+  const teams = Object.values(TEAMS) as (typeof TEAMS)[TeamId][];
 
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl">La tua squadra assegnata</h1>
+        <h1 className="text-2xl">{monday ? "Lunedì: scelta libera" : "Scegli la tua squadra"}</h1>
         <p className="text-sm text-muted-foreground">
-          Da martedì a domenica le squadre vengono bilanciate al 50/50.
+          {monday
+            ? "Scegli la tua squadra: sarà bloccata per tutta la settimana."
+            : `Da martedì a domenica le squadre vengono bilanciate al 50/50: ti consigliamo i ${TEAMS[proposed].name}.`}
         </p>
       </header>
 
-      <div className="card-fun p-6 text-center">
-        <div className={cn("mx-auto grid h-24 w-24 place-items-center rounded-full text-5xl", pt.colorClass)}>
-          {pt.emoji}
-        </div>
-        <h2 className="mt-3 text-2xl">{pt.name}</h2>
-
-        <div className="mt-6 flex flex-col items-center gap-3">
-          <Button
-            className="w-full max-w-xs rounded-xl font-bold"
-            onClick={() => pick(proposed, `Sei ufficialmente nei ${pt.name}!`)}
-          >
-            Accetta la squadra
-          </Button>
-
-          {canSwap ? (
-            <Button
-              variant="outline"
-              className="w-full max-w-xs rounded-xl font-bold"
-              disabled={watching}
-              onClick={() => {
-                setWatching(true);
-                toast("Video in riproduzione…");
-                window.setTimeout(() => {
-                  setWatching(false);
-                  pick(other, `Cambio effettuato: ora sei nei ${TEAMS[other].name}!`);
-                }, 2000);
-              }}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {teams.map((t) => {
+          const suggested = !monday && t.id === proposed;
+          const needsVideo = !monday && t.id !== proposed;
+          const blocked = needsVideo && !canSwap;
+          return (
+            <div
+              key={t.id}
+              className={cn("card-fun flex flex-col items-center p-6 text-center", suggested && "border-primary")}
             >
-              {watching ? "Video in corso…" : "Cambia squadra (Guarda Video) 📺"}
-            </Button>
-          ) : (
-            <p className="text-sm font-bold text-muted-foreground">L'altra squadra è al completo</p>
-          )}
-        </div>
+              <div className={cn("grid h-20 w-20 place-items-center rounded-full text-4xl", t.colorClass)}>
+                {t.emoji}
+              </div>
+              <h2 className="mt-3 text-xl">{t.name}</h2>
+              <p className="mt-1 mb-4 text-xs text-muted-foreground">
+                {monday
+                  ? "Scelta libera"
+                  : suggested
+                    ? "Squadra assegnata ⭐"
+                    : blocked
+                      ? "Al completo"
+                      : "Disponibile guardando un video"}
+              </p>
+              <Button
+                className="mt-auto w-full rounded-xl font-bold"
+                variant={suggested || monday ? "default" : "outline"}
+                disabled={blocked || busy !== null}
+                onClick={() =>
+                  pick(
+                    t.id,
+                    monday || suggested
+                      ? `Benvenuto nei ${t.name}!`
+                      : `Cambio effettuato: ora sei nei ${t.name}!`,
+                    needsVideo ? 2000 : 0,
+                  )
+                }
+              >
+                {busy === t.id
+                  ? "Attendi…"
+                  : monday
+                    ? "Unisciti"
+                    : suggested
+                      ? "Accetta la squadra"
+                      : "Cambia squadra 📺"}
+              </Button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

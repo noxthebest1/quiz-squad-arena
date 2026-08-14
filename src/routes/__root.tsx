@@ -14,6 +14,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ThemeProvider } from "../lib/theme";
 import { GameProvider } from "../lib/game/store";
 import { AppNav } from "../components/AppNav";
+import { AuthGate } from "../components/AuthGate";
 import { Toaster } from "../components/ui/sonner";
 
 function NotFoundComponent() {
@@ -130,7 +131,9 @@ function RootComponent() {
             <AppNav />
             <main className="mx-auto max-w-5xl px-4 pb-24 pt-5 md:pb-10">
               {/* Required: nested routes render here. */}
-              <Outlet />
+              <AuthGate>
+                <Outlet />
+              </AuthGate>
             </main>
           </div>
           <Toaster />

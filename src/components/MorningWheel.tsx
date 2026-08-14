@@ -23,22 +23,26 @@ export function MorningWheel() {
     (_, i) => `${COLORS[i]} ${(i * 360) / SLICES.length}deg ${((i + 1) * 360) / SLICES.length}deg`,
   ).join(", ")})`;
 
-  function spin() {
-    if (already || spinning) return;
+  async function spin() {
+    if (already || spinning || !hydrated) return;
     setSpinning(true);
     setAngle((a) => a + 1080 + Math.floor(Math.random() * 360));
-    window.setTimeout(() => {
-      const reward = spinWheel();
-      setSpinning(false);
+    try {
+      const reward = await spinWheel();
+      await new Promise((r) => window.setTimeout(r, 2000));
       toast.success(`Ruota del Mattino: +${reward} crediti!`);
-    }, 2200);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Giro non riuscito");
+    } finally {
+      setSpinning(false);
+    }
   }
 
   return (
     <div className="card-fun flex flex-col items-center gap-4 p-5">
       <div className="text-center">
         <h3 className="text-lg">Ruota del Mattino</h3>
-        <p className="text-xs text-muted-foreground">Un giro gratis ogni giorno (placeholder)</p>
+        <p className="text-xs text-muted-foreground">Un giro gratis ogni giorno</p>
       </div>
       <div className="relative grid place-items-center">
         <div className="absolute -top-2 z-10 text-xl">🔻</div>

@@ -45,7 +45,7 @@ function ChatPage() {
   const [messages, setMessages] = useState<Msg[]>(SEED);
 
   function send(text: string) {
-    sendChat(text);
+    void sendChat().catch(() => undefined);
     setMessages((m) => [
       ...m,
       { id: `${Date.now()}`, author: state.nickname, avatar, frameClass, title, team: state.team, text },
@@ -102,7 +102,7 @@ function ChatPage() {
           ))}
         </div>
         {hydrated && (
-          <p className="text-[11px] text-muted-foreground">Messaggi inviati oggi: {state.chatSent.length}</p>
+          <p className="text-[11px] text-muted-foreground">Messaggi inviati oggi: {state.chatSent}</p>
         )}
       </div>
     </div>
