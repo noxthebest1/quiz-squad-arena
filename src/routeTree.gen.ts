@@ -10,33 +10,128 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ChatRouteImport } from './routes/chat'
+import { Route as ClassificaRouteImport } from './routes/classifica'
+import { Route as MissioniRouteImport } from './routes/missioni'
+import { Route as ProfiloRouteImport } from './routes/profilo'
+import { Route as QuizRouteImport } from './routes/quiz'
+import { Route as ShopRouteImport } from './routes/shop'
+import { Route as SquadraRouteImport } from './routes/squadra'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChatRoute = ChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClassificaRoute = ClassificaRouteImport.update({
+  id: '/classifica',
+  path: '/classifica',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MissioniRoute = MissioniRouteImport.update({
+  id: '/missioni',
+  path: '/missioni',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfiloRoute = ProfiloRouteImport.update({
+  id: '/profilo',
+  path: '/profilo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuizRoute = QuizRouteImport.update({
+  id: '/quiz',
+  path: '/quiz',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShopRoute = ShopRouteImport.update({
+  id: '/shop',
+  path: '/shop',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SquadraRoute = SquadraRouteImport.update({
+  id: '/squadra',
+  path: '/squadra',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
+  '/classifica': typeof ClassificaRoute
+  '/missioni': typeof MissioniRoute
+  '/profilo': typeof ProfiloRoute
+  '/quiz': typeof QuizRoute
+  '/shop': typeof ShopRoute
+  '/squadra': typeof SquadraRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
+  '/classifica': typeof ClassificaRoute
+  '/missioni': typeof MissioniRoute
+  '/profilo': typeof ProfiloRoute
+  '/quiz': typeof QuizRoute
+  '/shop': typeof ShopRoute
+  '/squadra': typeof SquadraRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
+  '/classifica': typeof ClassificaRoute
+  '/missioni': typeof MissioniRoute
+  '/profilo': typeof ProfiloRoute
+  '/quiz': typeof QuizRoute
+  '/shop': typeof ShopRoute
+  '/squadra': typeof SquadraRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/chat'
+    | '/classifica'
+    | '/missioni'
+    | '/profilo'
+    | '/quiz'
+    | '/shop'
+    | '/squadra'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/chat'
+    | '/classifica'
+    | '/missioni'
+    | '/profilo'
+    | '/quiz'
+    | '/shop'
+    | '/squadra'
+  id:
+    | '__root__'
+    | '/'
+    | '/chat'
+    | '/classifica'
+    | '/missioni'
+    | '/profilo'
+    | '/quiz'
+    | '/shop'
+    | '/squadra'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ChatRoute: typeof ChatRoute
+  ClassificaRoute: typeof ClassificaRoute
+  MissioniRoute: typeof MissioniRoute
+  ProfiloRoute: typeof ProfiloRoute
+  QuizRoute: typeof QuizRoute
+  ShopRoute: typeof ShopRoute
+  SquadraRoute: typeof SquadraRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +143,67 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/chat': {
+      id: '/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/classifica': {
+      id: '/classifica'
+      path: '/classifica'
+      fullPath: '/classifica'
+      preLoaderRoute: typeof ClassificaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/missioni': {
+      id: '/missioni'
+      path: '/missioni'
+      fullPath: '/missioni'
+      preLoaderRoute: typeof MissioniRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profilo': {
+      id: '/profilo'
+      path: '/profilo'
+      fullPath: '/profilo'
+      preLoaderRoute: typeof ProfiloRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quiz': {
+      id: '/quiz'
+      path: '/quiz'
+      fullPath: '/quiz'
+      preLoaderRoute: typeof QuizRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/shop': {
+      id: '/shop'
+      path: '/shop'
+      fullPath: '/shop'
+      preLoaderRoute: typeof ShopRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/squadra': {
+      id: '/squadra'
+      path: '/squadra'
+      fullPath: '/squadra'
+      preLoaderRoute: typeof SquadraRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ChatRoute: ChatRoute,
+  ClassificaRoute: ClassificaRoute,
+  MissioniRoute: MissioniRoute,
+  ProfiloRoute: ProfiloRoute,
+  QuizRoute: QuizRoute,
+  ShopRoute: ShopRoute,
+  SquadraRoute: SquadraRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
