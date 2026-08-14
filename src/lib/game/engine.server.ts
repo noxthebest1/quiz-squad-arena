@@ -1,5 +1,8 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import type { Database } from "@/integrations/supabase/types";
 import { EMPTY_MISSIONS, type MissionId } from "./missions";
+
+type ProfilePatch = Database["public"]["Tables"]["profiles"]["Update"];
 
 export type ProfileRow = {
   id: string;
@@ -41,7 +44,7 @@ export function weekISO(d = new Date()) {
 const SELECT = "*";
 
 async function dailyReset(row: ProfileRow): Promise<ProfileRow> {
-  const patch: Record<string, unknown> = {};
+  const patch: ProfilePatch = {};
   if (row.day !== todayISO()) {
     Object.assign(patch, {
       day: todayISO(),
@@ -62,7 +65,7 @@ async function dailyReset(row: ProfileRow): Promise<ProfileRow> {
   return await patchProfile(row.id, patch);
 }
 
-export async function patchProfile(userId: string, patch: Record<string, unknown>): Promise<ProfileRow> {
+export async function patchProfile(userId: string, patch: ProfilePatch): Promise<ProfileRow> {
   const { data, error } = await supabaseAdmin
     .from("profiles")
     .update(patch)
