@@ -21,7 +21,7 @@ export const Route = createFileRoute("/shop")({
 });
 
 function ShopPage() {
-  const { state, buy, equip, hydrated, setNickname } = useGame();
+  const { state, buy, hydrated, setNickname } = useGame();
   const [nick, setNick] = useState("");
 
   async function handleBuy(item: ShopItem) {

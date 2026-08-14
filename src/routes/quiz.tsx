@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useGame } from "@/lib/game/store";
-import { DIFFICULTY_LABEL } from "@/lib/game/quizzes";
+import { DIFFICULTY_LABEL, type Quiz } from "@/lib/game/quizzes";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/quiz")({
@@ -17,6 +18,8 @@ export const Route = createFileRoute("/quiz")({
   component: QuizPage,
 });
 
+type Outcome = { correct: boolean; points: number; credits: number; answer: number };
+
 function QuizPage() {
   const {
     hydrated,
@@ -27,10 +30,12 @@ function QuizPage() {
     bonusLeft,
     canWatchVideo,
     watchVideo,
-    answerQuiz,
+    answer,
   } = useGame();
   const [selected, setSelected] = useState<number | null>(null);
-  const [result, setResult] = useState<{ correct: boolean; points: number; credits: number } | null>(null);
+  const [locked, setLocked] = useState<Quiz | null>(null);
+  const [result, setResult] = useState<Outcome | null>(null);
+  const [sending, setSending] = useState(false);
   const [watching, setWatching] = useState(false);
 
   if (!hydrated) return <p className="text-muted-foreground">Caricamento…</p>;
@@ -50,7 +55,10 @@ function QuizPage() {
     );
   }
 
-  if (!nextQuiz) {
+  // Il quiz mostrato resta congelato finché l'utente non preme "Continua".
+  const quiz = locked ?? nextQuiz;
+
+  if (!quiz) {
     return (
       <div className="card-fun space-y-4 p-6 text-center">
         <p className="text-4xl">🎟️</p>
@@ -67,8 +75,9 @@ function QuizPage() {
             onClick={() => {
               setWatching(true);
               window.setTimeout(() => {
-                watchVideo();
-                setWatching(false);
+                void watchVideo()
+                  .catch((error) => toast.error(error instanceof Error ? error.message : "Bonus non riuscito"))
+                  .finally(() => setWatching(false));
               }, 1800);
             }}
           >
@@ -79,19 +88,28 @@ function QuizPage() {
     );
   }
 
-  const quiz = nextQuiz;
-
-  function confirm() {
-    if (selected === null || result) return;
-    const correct = selected === quiz.answer;
-    answerQuiz(quiz, correct);
-    setResult({ correct, points: correct ? quiz.points : 0, credits: correct ? quiz.credits : 0 });
+  async function confirm() {
+    if (selected === null || result || sending || !quiz) return;
+    setSending(true);
+    setLocked(quiz);
+    try {
+      const res = await answer(quiz, selected);
+      setResult({ ...res, answer: quiz.answer });
+    } catch (error) {
+      setLocked(null);
+      toast.error(error instanceof Error ? error.message : "Risposta non registrata");
+    } finally {
+      setSending(false);
+    }
   }
 
   function next() {
     setSelected(null);
     setResult(null);
+    setLocked(null);
   }
+
+  const difficulty = locked ? locked.difficulty : nextDifficulty;
 
   return (
     <div className="space-y-5">
@@ -100,12 +118,12 @@ function QuizPage() {
           <span
             className={cn(
               "rounded-full px-3 py-1 text-xs font-extrabold uppercase",
-              nextDifficulty === "medio" && "bg-success text-success-foreground",
-              nextDifficulty === "difficile" && "bg-coin text-coin-foreground",
-              nextDifficulty === "impossibile" && "bg-primary text-primary-foreground",
+              difficulty === "medio" && "bg-success text-success-foreground",
+              difficulty === "difficile" && "bg-coin text-coin-foreground",
+              difficulty === "impossibile" && "bg-primary text-primary-foreground",
             )}
           >
-            {nextDifficulty ? DIFFICULTY_LABEL[nextDifficulty] : ""}
+            {difficulty ? DIFFICULTY_LABEL[difficulty] : ""}
           </span>
         </div>
         <span className="shrink-0 text-xs font-bold text-muted-foreground">
@@ -123,11 +141,11 @@ function QuizPage() {
           {quiz.options.map((opt, i) => {
             const isPicked = selected === i;
             const reveal = result !== null;
-            const isRight = i === quiz.answer;
+            const isRight = result !== null && i === result.answer;
             return (
               <button
                 key={i}
-                disabled={reveal}
+                disabled={reveal || sending}
                 onClick={() => setSelected(i)}
                 className={cn(
                   "rounded-2xl border-2 px-4 py-3 text-left text-sm font-bold transition-colors",
@@ -148,10 +166,10 @@ function QuizPage() {
           <Button
             className="mt-5 w-full rounded-xl font-extrabold"
             size="lg"
-            disabled={selected === null}
+            disabled={selected === null || sending}
             onClick={confirm}
           >
-            Conferma risposta
+            {sending ? "Verifica…" : "Conferma risposta"}
           </Button>
         ) : (
           <div
