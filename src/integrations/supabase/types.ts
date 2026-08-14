@@ -14,7 +14,99 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      inventory: {
+        Row: {
+          created_at: string
+          id: string
+          item_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          item_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          item_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          answered_quiz_ids: string[]
+          avatar_id: string
+          bonus_unlocked: number
+          bonus_used: number
+          chat_sent: number
+          claimed_missions: string[]
+          created_at: string
+          credits: number
+          day: string | null
+          frame_id: string
+          free_used: number
+          id: string
+          missions: Json
+          nickname: string
+          points: number
+          streak_days: number
+          team: string | null
+          team_week: string | null
+          title_id: string
+          updated_at: string
+          wheel_spun_day: string | null
+        }
+        Insert: {
+          answered_quiz_ids?: string[]
+          avatar_id?: string
+          bonus_unlocked?: number
+          bonus_used?: number
+          chat_sent?: number
+          claimed_missions?: string[]
+          created_at?: string
+          credits?: number
+          day?: string | null
+          frame_id?: string
+          free_used?: number
+          id: string
+          missions?: Json
+          nickname?: string
+          points?: number
+          streak_days?: number
+          team?: string | null
+          team_week?: string | null
+          title_id?: string
+          updated_at?: string
+          wheel_spun_day?: string | null
+        }
+        Update: {
+          answered_quiz_ids?: string[]
+          avatar_id?: string
+          bonus_unlocked?: number
+          bonus_used?: number
+          chat_sent?: number
+          claimed_missions?: string[]
+          created_at?: string
+          credits?: number
+          day?: string | null
+          frame_id?: string
+          free_used?: number
+          id?: string
+          missions?: Json
+          nickname?: string
+          points?: number
+          streak_days?: number
+          team?: string | null
+          team_week?: string | null
+          title_id?: string
+          updated_at?: string
+          wheel_spun_day?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
