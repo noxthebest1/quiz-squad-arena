@@ -24,27 +24,27 @@ function ShopPage() {
   const { state, buy, equip, hydrated, setNickname } = useGame();
   const [nick, setNick] = useState("");
 
-  function handleBuy(item: ShopItem) {
-    if (buy(item.id)) {
-      equip(item.id);
+  async function handleBuy(item: ShopItem) {
+    try {
+      await buy(item.id);
       toast.success(`${item.name} acquistato ed equipaggiato!`);
-    } else {
-      toast.error("Crediti insufficienti o già posseduto.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Acquisto non riuscito");
     }
   }
 
-  function handleNickname() {
+  async function handleNickname() {
     if (nick.trim().length < 3) {
       toast.error("Il nickname deve avere almeno 3 caratteri.");
       return;
     }
-    if (!buy(NICKNAME_TOKEN.id)) {
-      toast.error("Crediti insufficienti.");
-      return;
+    try {
+      await setNickname(nick);
+      setNick("");
+      toast.success("Nickname aggiornato!");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Cambio nickname non riuscito");
     }
-    setNickname(nick);
-    setNick("");
-    toast.success("Nickname aggiornato!");
   }
 
   return (
