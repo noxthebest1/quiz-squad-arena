@@ -239,3 +239,108 @@ export const registerChat = createServerFn({ method: "POST" })
     });
     return await engine.snapshot(context.userId, profile);
   });
+
+/* ---------------- Chat persistente ---------------- */
+
+export const listChatMessages = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const engine = await import("./engine.server");
+    return await engine.listChat(60);
+  });
+
+export const sendChatMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ text: z.string().min(1).max(80) }).parse(input))
+  .handler(async ({ data, context }) => {
+    const engine = await import("./engine.server");
+    const { isAllowedChatMessage } = await import("./chat-presets");
+    if (!isAllowedChatMessage(data.text)) throw new Error("Messaggio non consentito");
+
+    let profile = await engine.loadProfile(context.userId, "Sfidante");
+    await engine.insertChat({
+      user_id: context.userId,
+      nickname: profile.nickname,
+      avatar_id: profile.avatar_id,
+      frame_id: profile.frame_id,
+      title_id: profile.title_id,
+      team: profile.team,
+      text: data.text,
+    });
+
+    profile = await engine.patchProfile(context.userId, {
+      chat_sent: profile.chat_sent + 1,
+      missions: { ...profile.missions, chat: 1 },
+    });
+
+    return {
+      messages: await engine.listChat(60),
+      state: await engine.snapshot(context.userId, profile),
+    };
+  });
+
+/* ---------------- Pannello admin ---------------- */
+
+export const adminResetChat = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    await engine.resetChat();
+    return { ok: true };
+  });
+
+export const adminUpdateWheel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        prizes: z
+          .array(z.object({ label: z.string().min(1).max(24), credits: z.number().int().min(0).max(1000) }))
+          .min(2)
+          .max(8),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    await engine.setSetting("wheel_prizes", data.prizes);
+    return await engine.getSettings();
+  });
+
+export const adminUpdateStreakPrize = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        emoji: z.string().min(1).max(4),
+        label: z.string().min(1).max(40),
+        description: z.string().min(1).max(140),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    await engine.setSetting("streak_prize", data);
+    return await engine.getSettings();
+  });
+
+export const adminResetStreaks = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    await engine.resetStreaks();
+    return { ok: true };
+  });
+
+export const adminNewSeason = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    const season = await engine.startNewSeason();
+    return { season };
+  });
