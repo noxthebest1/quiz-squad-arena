@@ -231,3 +231,26 @@ export async function insertChat(row: Omit<ChatRow, "id" | "created_at">) {
   const { error } = await supabaseAdmin.from("chat_messages").insert(row as never);
   if (error) throw new Error(error.message);
 }
+
+export async function resetChat() {
+  const { error } = await supabaseAdmin.from("chat_messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) throw new Error(error.message);
+}
+
+export async function resetStreaks() {
+  const { error } = await supabaseAdmin.from("profiles").update({ streak_days: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) throw new Error(error.message);
+}
+
+export async function startNewSeason(): Promise<number> {
+  const settings = await getSettings();
+  const next = settings.season.number + 1;
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .update({ points: 0, streak_days: 0, team: null, team_week: null })
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) throw new Error(error.message);
+  await setSetting("season", { number: next });
+  await resetChat();
+  return next;
+}
