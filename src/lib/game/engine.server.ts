@@ -130,8 +130,10 @@ export function sanitizeNickname(raw: string) {
 
 /* ---------------- Impostazioni app (gestite dal pannello admin) ---------------- */
 
+import { DEFAULT_SETTINGS, type AppSettings, type WheelPrize, type StreakPrize } from "./settings";
 export type { WheelPrize, StreakPrize, ShowcaseEntry, AppSettings } from "./settings";
 export { DEFAULT_SETTINGS } from "./settings";
+
 
 
 export async function getSettings(): Promise<AppSettings> {
