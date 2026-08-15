@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { BONUS_ORDER, FREE_ORDER, QUIZZES, type Difficulty, type Quiz } from "./quizzes";
 import { AVATARS, FRAMES, TITLES, TEAMS, type TeamId } from "./catalog";
 import { EMPTY_MISSIONS, type MissionId } from "./missions";
+import { DEFAULT_SETTINGS, type AppSettings } from "./settings";
 import {
   answerQuiz as answerQuizFn,
   buyItem as buyItemFn,
@@ -22,6 +23,8 @@ import {
   equipItem as equipItemFn,
   fetchGameState,
   registerChat as registerChatFn,
+  startQuiz as startQuizFn,
+  abandonQuiz as abandonQuizFn,
   spinWheel as spinWheelFn,
   watchVideo as watchVideoFn,
 } from "./game.functions";
@@ -48,6 +51,7 @@ export type GameState = {
   missions: Record<MissionId, number>;
   claimedMissions: string[];
   chatSent: number;
+  activeQuizId: string | null;
 };
 
 const EMPTY_STATE: GameState = {
@@ -70,6 +74,7 @@ const EMPTY_STATE: GameState = {
   missions: { ...EMPTY_MISSIONS },
   claimedMissions: [],
   chatSent: 0,
+  activeQuizId: null,
 };
 
 export function todayKey(d = new Date()) {
@@ -108,8 +113,11 @@ type Snapshot = {
     missions: Record<string, number>;
     claimed_missions: string[];
     chat_sent: number;
+    active_quiz_id: string | null;
   };
   owned: string[];
+  settings: AppSettings;
+  isAdmin: boolean;
 };
 
 function toState(snap: Snapshot): GameState {
@@ -134,6 +142,7 @@ function toState(snap: Snapshot): GameState {
     missions: { ...EMPTY_MISSIONS, ...(p.missions ?? {}) } as Record<MissionId, number>,
     claimedMissions: p.claimed_missions ?? [],
     chatSent: p.chat_sent,
+    activeQuizId: p.active_quiz_id ?? null,
   };
 }
 
@@ -151,6 +160,10 @@ type Ctx = {
   nextQuiz: Quiz | null;
   nextDifficulty: Difficulty | null;
   teamLocked: boolean;
+  settings: AppSettings;
+  isAdmin: boolean;
+  startQuiz: () => Promise<void>;
+  abandonQuiz: () => Promise<void>;
   refresh: () => Promise<void>;
   answer: (quiz: Quiz, optionIndex: number) => Promise<{ correct: boolean; points: number; credits: number }>;
   watchVideo: () => Promise<void>;
@@ -171,6 +184,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [isAdmin, setIsAdmin] = useState(false);
   const loadedFor = useRef<string | null>(null);
 
   useEffect(() => {
@@ -188,6 +203,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     const snap = (await fetchGameState()) as Snapshot;
     setState(toState(snap));
+    setSettings(snap.settings ?? DEFAULT_SETTINGS);
+    setIsAdmin(Boolean(snap.isAdmin));
     setHydrated(true);
   }, []);
 
@@ -207,7 +224,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     });
   }, [authReady, user, refresh]);
 
-  const apply = useCallback((snap: Snapshot) => setState(toState(snap)), []);
+  const apply = useCallback((snap: Snapshot) => {
+    setState(toState(snap));
+    if (snap.settings) setSettings(snap.settings);
+    setIsAdmin(Boolean(snap.isAdmin));
+  }, []);
 
   const ticketsLeft = Math.max(0, 5 - state.freeUsed);
   const bonusLeft = Math.max(0, state.bonusUnlocked - state.bonusUsed);
@@ -219,10 +240,24 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return null;
   }, [ticketsLeft, bonusLeft, state.freeUsed, state.bonusUsed]);
 
+  const activeQuiz = useMemo(
+    () => (state.activeQuizId ? (QUIZZES.find((q) => q.id === state.activeQuizId) ?? null) : null),
+    [state.activeQuizId],
+  );
+
   const nextQuiz = useMemo(() => {
+    if (activeQuiz) return activeQuiz;
     if (!nextDifficulty) return null;
     return QUIZZES.find((q) => q.difficulty === nextDifficulty && !state.answeredQuizIds.includes(q.id)) ?? null;
-  }, [nextDifficulty, state.answeredQuizIds]);
+  }, [activeQuiz, nextDifficulty, state.answeredQuizIds]);
+
+  const startQuiz = useCallback(async () => {
+    apply((await startQuizFn()) as Snapshot);
+  }, [apply]);
+
+  const abandonQuiz = useCallback(async () => {
+    apply((await abandonQuizFn()) as Snapshot);
+  }, [apply]);
 
   const answer = useCallback(
     async (quiz: Quiz, optionIndex: number) => {
@@ -297,6 +332,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setState(EMPTY_STATE);
+    setIsAdmin(false);
     setHydrated(false);
   }, []);
 
@@ -318,6 +354,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     nextQuiz,
     nextDifficulty,
     teamLocked: state.team !== null,
+    settings,
+    isAdmin,
+    startQuiz,
+    abandonQuiz,
     refresh,
     answer,
     watchVideo,
