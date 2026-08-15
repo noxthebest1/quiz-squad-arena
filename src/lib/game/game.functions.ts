@@ -112,9 +112,11 @@ export const spinWheel = createServerFn({ method: "POST" })
     let profile = await engine.loadProfile(context.userId, "Sfidante");
     if (profile.wheel_spun_day === engine.todayISO()) throw new Error("Giro già usato oggi");
 
-    const rewards = [5, 10, 15, 20, 30, 50];
-    const index = Math.floor(Math.random() * rewards.length);
-    const reward = rewards[index] ?? 5;
+    const settings = await engine.getSettings();
+    const prizes = settings.wheelPrizes.length ? settings.wheelPrizes : [{ label: "5 crediti", credits: 5 }];
+    const index = Math.floor(Math.random() * prizes.length);
+    const reward = prizes[index]?.credits ?? 5;
+
 
     profile = await engine.patchProfile(context.userId, {
       wheel_spun_day: engine.todayISO(),
