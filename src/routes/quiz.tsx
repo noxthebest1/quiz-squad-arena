@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,12 +31,24 @@ function QuizPage() {
     canWatchVideo,
     watchVideo,
     answer,
+    startQuiz,
+    abandonQuiz,
   } = useGame();
   const [selected, setSelected] = useState<number | null>(null);
   const [locked, setLocked] = useState<Quiz | null>(null);
   const [result, setResult] = useState<Outcome | null>(null);
   const [sending, setSending] = useState(false);
   const [watching, setWatching] = useState(false);
+  const [starting, setStarting] = useState(false);
+
+  // Se l'utente lascia la pagina con un quiz aperto, il ticket resta consumato.
+  const activeRef = useRef<string | null>(null);
+  activeRef.current = result ? null : state.activeQuizId;
+  useEffect(() => {
+    return () => {
+      if (activeRef.current) void abandonQuiz().catch(() => undefined);
+    };
+  }, [abandonQuiz]);
 
   if (!hydrated) return <p className="text-muted-foreground">Caricamento…</p>;
 
@@ -55,38 +67,75 @@ function QuizPage() {
     );
   }
 
-  // Il quiz mostrato resta congelato finché l'utente non preme "Continua".
-  const quiz = locked ?? nextQuiz;
+  const totalTickets = ticketsLeft + bonusLeft;
 
-  if (!quiz) {
+  // Nessun quiz aperto: schermata di avvio (il ticket viene consumato all'apertura).
+  if (!state.activeQuizId && !result) {
+    if (totalTickets === 0) {
+      return (
+        <div className="card-fun space-y-4 p-6 text-center">
+          <p className="text-4xl">🎟️</p>
+          <h1 className="text-2xl">Ticket esauriti</h1>
+          <p className="text-sm text-muted-foreground">
+            {canWatchVideo
+              ? `Guarda un video per sbloccare un ticket bonus (${state.bonusUnlocked}/3 usati oggi).`
+              : "Torna domani per 5 nuovi ticket gratuiti."}
+          </p>
+          {canWatchVideo && (
+            <Button
+              className="rounded-xl font-bold"
+              disabled={watching}
+              onClick={() => {
+                setWatching(true);
+                window.setTimeout(() => {
+                  void watchVideo()
+                    .catch((error) => toast.error(error instanceof Error ? error.message : "Bonus non riuscito"))
+                    .finally(() => setWatching(false));
+                }, 1800);
+              }}
+            >
+              {watching ? "Video in corso…" : "Guarda video 📺 (+1 ticket)"}
+            </Button>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className="card-fun space-y-4 p-6 text-center">
-        <p className="text-4xl">🎟️</p>
-        <h1 className="text-2xl">Ticket esauriti</h1>
+        <p className="text-4xl">🎫</p>
+        <h1 className="text-2xl">Pronto per il quiz?</h1>
         <p className="text-sm text-muted-foreground">
-          {canWatchVideo
-            ? `Guarda un video per sbloccare un ticket bonus (${state.bonusUnlocked}/3 usati oggi).`
-            : "Torna domani per 5 nuovi ticket gratuiti."}
+          Aprendo il quiz consumi <strong>1 ticket</strong>. Se esci prima di rispondere, il ticket è perso.
         </p>
-        {canWatchVideo && (
-          <Button
-            className="rounded-xl font-bold"
-            disabled={watching}
-            onClick={() => {
-              setWatching(true);
-              window.setTimeout(() => {
-                void watchVideo()
-                  .catch((error) => toast.error(error instanceof Error ? error.message : "Bonus non riuscito"))
-                  .finally(() => setWatching(false));
-              }, 1800);
-            }}
-          >
-            {watching ? "Video in corso…" : "Guarda video 📺 (+1 ticket)"}
-          </Button>
+        <p className="text-xs font-bold text-muted-foreground">
+          🎟️ {ticketsLeft} gratis · ⚡ {bonusLeft} bonus
+        </p>
+        {nextDifficulty && (
+          <p className="text-xs text-muted-foreground">
+            Prossima difficoltà: <strong>{DIFFICULTY_LABEL[nextDifficulty]}</strong>
+          </p>
         )}
+        <Button
+          size="lg"
+          className="rounded-xl font-extrabold"
+          disabled={starting}
+          onClick={() => {
+            setStarting(true);
+            void startQuiz()
+              .catch((error) => toast.error(error instanceof Error ? error.message : "Avvio non riuscito"))
+              .finally(() => setStarting(false));
+          }}
+        >
+          {starting ? "Apertura…" : "Usa 1 ticket e gioca"}
+        </Button>
       </div>
     );
   }
+
+  // Il quiz mostrato resta congelato finché l'utente non preme "Continua".
+  const quiz = locked ?? nextQuiz;
+  if (!quiz) return <p className="text-muted-foreground">Caricamento…</p>;
 
   async function confirm() {
     if (selected === null || result || sending || !quiz) return;
@@ -130,6 +179,12 @@ function QuizPage() {
           🎟️ {ticketsLeft} gratis · ⚡ {bonusLeft} bonus
         </span>
       </div>
+
+      {!result && (
+        <p className="rounded-xl border-2 border-dashed border-border px-4 py-2 text-center text-xs font-bold text-muted-foreground">
+          ⚠️ Ticket già consumato: se esci ora perdi questo quiz.
+        </p>
+      )}
 
       <div className="card-fun p-6">
         <h1 className="text-xl leading-snug">{quiz.question}</h1>

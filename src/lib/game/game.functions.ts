@@ -16,21 +16,13 @@ export const answerQuiz = createServerFn({ method: "POST" })
   .inputValidator((input) => z.object({ quizId: z.string(), optionIndex: z.number().int().min(0) }).parse(input))
   .handler(async ({ data, context }) => {
     const engine = await import("./engine.server");
-    const { QUIZZES, FREE_ORDER, BONUS_ORDER } = await import("./quizzes");
+    const { QUIZZES } = await import("./quizzes");
 
     let profile = await engine.loadProfile(context.userId, "Sfidante");
     const quiz = QUIZZES.find((q) => q.id === data.quizId);
     if (!quiz) throw new Error("Quiz non trovato");
     if (!profile.team) throw new Error("Devi prima scegliere la squadra");
-    if (profile.answered_quiz_ids.includes(quiz.id)) throw new Error("Quiz già giocato");
-
-    const usingFree = profile.free_used < 5;
-    const expected = usingFree
-      ? FREE_ORDER[profile.free_used]
-      : BONUS_ORDER[profile.bonus_used];
-    const bonusLeft = profile.bonus_unlocked - profile.bonus_used;
-    if (!usingFree && bonusLeft <= 0) throw new Error("Nessun ticket disponibile");
-    if (!expected || quiz.difficulty !== expected) throw new Error("Quiz non valido per questo ticket");
+    if (profile.active_quiz_id !== quiz.id) throw new Error("Nessun quiz attivo: usa un ticket per iniziare");
 
     const correct = data.optionIndex === quiz.answer;
     const missions = {
@@ -40,12 +32,12 @@ export const answerQuiz = createServerFn({ method: "POST" })
     };
 
     profile = await engine.patchProfile(context.userId, {
-      free_used: usingFree ? profile.free_used + 1 : profile.free_used,
-      bonus_used: usingFree ? profile.bonus_used : profile.bonus_used + 1,
       answered_quiz_ids: [...profile.answered_quiz_ids, quiz.id],
       points: profile.points + (correct ? quiz.points : 0),
       credits: profile.credits + (correct ? quiz.credits : 0),
       missions,
+      active_quiz_id: null,
+      active_quiz_started_at: null,
     });
 
     return {
@@ -56,6 +48,52 @@ export const answerQuiz = createServerFn({ method: "POST" })
       state: await engine.snapshot(context.userId, profile),
     };
   });
+
+/** Consuma 1 ticket e apre il quiz. Se esiste già un quiz attivo lo riprende. */
+export const startQuiz = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const engine = await import("./engine.server");
+    const { QUIZZES, FREE_ORDER, BONUS_ORDER } = await import("./quizzes");
+
+    let profile = await engine.loadProfile(context.userId, "Sfidante");
+    if (!profile.team) throw new Error("Devi prima scegliere la squadra");
+    if (profile.active_quiz_id) return await engine.snapshot(context.userId, profile);
+
+    const usingFree = profile.free_used < 5;
+    const bonusLeft = profile.bonus_unlocked - profile.bonus_used;
+    if (!usingFree && bonusLeft <= 0) throw new Error("Nessun ticket disponibile");
+
+    const expected = usingFree ? FREE_ORDER[profile.free_used] : BONUS_ORDER[profile.bonus_used];
+    if (!expected) throw new Error("Nessun ticket disponibile");
+
+    const quiz = QUIZZES.find((q) => q.difficulty === expected && !profile.answered_quiz_ids.includes(q.id));
+    if (!quiz) throw new Error("Nessun quiz disponibile per oggi");
+
+    profile = await engine.patchProfile(context.userId, {
+      free_used: usingFree ? profile.free_used + 1 : profile.free_used,
+      bonus_used: usingFree ? profile.bonus_used : profile.bonus_used + 1,
+      active_quiz_id: quiz.id,
+      active_quiz_started_at: new Date().toISOString(),
+    });
+    return await engine.snapshot(context.userId, profile);
+  });
+
+/** Uscita prima di completare: il ticket resta consumato e il quiz non è più giocabile. */
+export const abandonQuiz = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const engine = await import("./engine.server");
+    let profile = await engine.loadProfile(context.userId, "Sfidante");
+    if (!profile.active_quiz_id) return await engine.snapshot(context.userId, profile);
+    profile = await engine.patchProfile(context.userId, {
+      answered_quiz_ids: [...profile.answered_quiz_ids, profile.active_quiz_id],
+      active_quiz_id: null,
+      active_quiz_started_at: null,
+    });
+    return await engine.snapshot(context.userId, profile);
+  });
+
 
 export const watchVideo = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -74,9 +112,11 @@ export const spinWheel = createServerFn({ method: "POST" })
     let profile = await engine.loadProfile(context.userId, "Sfidante");
     if (profile.wheel_spun_day === engine.todayISO()) throw new Error("Giro già usato oggi");
 
-    const rewards = [5, 10, 15, 20, 30, 50];
-    const index = Math.floor(Math.random() * rewards.length);
-    const reward = rewards[index] ?? 5;
+    const settings = await engine.getSettings();
+    const prizes = settings.wheelPrizes.length ? settings.wheelPrizes : [{ label: "5 crediti", credits: 5 }];
+    const index = Math.floor(Math.random() * prizes.length);
+    const reward = prizes[index]?.credits ?? 5;
+
 
     profile = await engine.patchProfile(context.userId, {
       wheel_spun_day: engine.todayISO(),
@@ -198,4 +238,109 @@ export const registerChat = createServerFn({ method: "POST" })
       missions: { ...profile.missions, chat: 1 },
     });
     return await engine.snapshot(context.userId, profile);
+  });
+
+/* ---------------- Chat persistente ---------------- */
+
+export const listChatMessages = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const engine = await import("./engine.server");
+    return await engine.listChat(60);
+  });
+
+export const sendChatMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ text: z.string().min(1).max(80) }).parse(input))
+  .handler(async ({ data, context }) => {
+    const engine = await import("./engine.server");
+    const { isAllowedChatMessage } = await import("./chat-presets");
+    if (!isAllowedChatMessage(data.text)) throw new Error("Messaggio non consentito");
+
+    let profile = await engine.loadProfile(context.userId, "Sfidante");
+    await engine.insertChat({
+      user_id: context.userId,
+      nickname: profile.nickname,
+      avatar_id: profile.avatar_id,
+      frame_id: profile.frame_id,
+      title_id: profile.title_id,
+      team: profile.team,
+      text: data.text,
+    });
+
+    profile = await engine.patchProfile(context.userId, {
+      chat_sent: profile.chat_sent + 1,
+      missions: { ...profile.missions, chat: 1 },
+    });
+
+    return {
+      messages: await engine.listChat(60),
+      state: await engine.snapshot(context.userId, profile),
+    };
+  });
+
+/* ---------------- Pannello admin ---------------- */
+
+export const adminResetChat = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    await engine.resetChat();
+    return { ok: true };
+  });
+
+export const adminUpdateWheel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        prizes: z
+          .array(z.object({ label: z.string().min(1).max(24), credits: z.number().int().min(0).max(1000) }))
+          .min(2)
+          .max(8),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    await engine.setSetting("wheel_prizes", data.prizes);
+    return await engine.getSettings();
+  });
+
+export const adminUpdateStreakPrize = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        emoji: z.string().min(1).max(4),
+        label: z.string().min(1).max(40),
+        description: z.string().min(1).max(140),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    await engine.setSetting("streak_prize", data);
+    return await engine.getSettings();
+  });
+
+export const adminResetStreaks = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    await engine.resetStreaks();
+    return { ok: true };
+  });
+
+export const adminNewSeason = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    const season = await engine.startNewSeason();
+    return { season };
   });

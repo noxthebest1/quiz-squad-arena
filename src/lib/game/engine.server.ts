@@ -130,44 +130,11 @@ export function sanitizeNickname(raw: string) {
 
 /* ---------------- Impostazioni app (gestite dal pannello admin) ---------------- */
 
-export type WheelPrize = { label: string; credits: number };
-export type StreakPrize = { emoji: string; label: string; description: string };
-export type ShowcaseEntry = { emoji: string; title: string; description: string };
-export type AppSettings = {
-  wheelPrizes: WheelPrize[];
-  streakPrize: StreakPrize;
-  showcase: { champion: ShowcaseEntry; team: ShowcaseEntry };
-  season: { number: number };
-};
+import { DEFAULT_SETTINGS, type AppSettings, type WheelPrize, type StreakPrize } from "./settings";
+export type { WheelPrize, StreakPrize, ShowcaseEntry, AppSettings } from "./settings";
+export { DEFAULT_SETTINGS } from "./settings";
 
-export const DEFAULT_SETTINGS: AppSettings = {
-  wheelPrizes: [
-    { label: "5 crediti", credits: 5 },
-    { label: "10 crediti", credits: 10 },
-    { label: "15 crediti", credits: 15 },
-    { label: "20 crediti", credits: 20 },
-    { label: "30 crediti", credits: 30 },
-    { label: "50 crediti", credits: 50 },
-  ],
-  streakPrize: {
-    emoji: "🎁",
-    label: "Baule Leggendario",
-    description: "100 crediti + cornice esclusiva al 7° giorno di fila",
-  },
-  showcase: {
-    champion: {
-      emoji: "🦊",
-      title: "Premio Campione",
-      description: "Cornice con corona per il 1° della classifica generale.",
-    },
-    team: {
-      emoji: "🎖️",
-      title: "Premio Squadra",
-      description: "Titolo Squadra Campione per tutti i membri della squadra vincitrice.",
-    },
-  },
-  season: { number: 1 },
-};
+
 
 export async function getSettings(): Promise<AppSettings> {
   const { data, error } = await supabaseAdmin.from("app_settings").select("key, value");
@@ -230,4 +197,27 @@ export async function listChat(limit = 60): Promise<ChatRow[]> {
 export async function insertChat(row: Omit<ChatRow, "id" | "created_at">) {
   const { error } = await supabaseAdmin.from("chat_messages").insert(row as never);
   if (error) throw new Error(error.message);
+}
+
+export async function resetChat() {
+  const { error } = await supabaseAdmin.from("chat_messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) throw new Error(error.message);
+}
+
+export async function resetStreaks() {
+  const { error } = await supabaseAdmin.from("profiles").update({ streak_days: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) throw new Error(error.message);
+}
+
+export async function startNewSeason(): Promise<number> {
+  const settings = await getSettings();
+  const next = settings.season.number + 1;
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .update({ points: 0, streak_days: 0, team: null, team_week: null })
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) throw new Error(error.message);
+  await setSetting("season", { number: next });
+  await resetChat();
+  return next;
 }
