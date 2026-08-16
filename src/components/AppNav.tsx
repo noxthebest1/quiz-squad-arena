@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Home, ShoppingBag, Target, MessageCircle, User, Trophy, Moon, Sun, LogOut } from "lucide-react";
+import { Home, ShoppingBag, Target, MessageCircle, User, Trophy, Moon, Sun, LogOut, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/lib/theme";
 import { useGame } from "@/lib/game/store";
@@ -15,7 +15,7 @@ const ITEMS = [
 
 export function AppNav() {
   const { theme, toggle } = useTheme();
-  const { state, hydrated, user, signOut } = useGame();
+  const { state, hydrated, user, signOut, isAdmin } = useGame();
 
   return (
     <>
@@ -43,6 +43,16 @@ export function AppNav() {
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className="grid h-9 w-9 place-items-center rounded-xl border-2 border-border text-muted-foreground transition-colors hover:bg-muted"
+                activeProps={{ className: "bg-primary text-primary-foreground" }}
+                aria-label="Pannello admin"
+              >
+                <Shield className="h-4 w-4" />
+              </Link>
+            )}
             {user && (
               <Button
                 variant="outline"
