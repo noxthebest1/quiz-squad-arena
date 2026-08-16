@@ -162,6 +162,7 @@ type Ctx = {
   teamLocked: boolean;
   settings: AppSettings;
   isAdmin: boolean;
+  applySnapshot: (snap: unknown) => void;
   startQuiz: () => Promise<void>;
   abandonQuiz: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -356,6 +357,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     teamLocked: state.team !== null,
     settings,
     isAdmin,
+    applySnapshot: (snap: unknown) => apply(snap as Snapshot),
     startQuiz,
     abandonQuiz,
     refresh,
