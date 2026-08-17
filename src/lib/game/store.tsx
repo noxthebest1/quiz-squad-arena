@@ -11,7 +11,7 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { BONUS_ORDER, FREE_ORDER, QUIZZES, type Difficulty, type Quiz } from "./quizzes";
-import { AVATARS, FRAMES, TITLES, TEAMS, type TeamId } from "./catalog";
+import { AVATARS, FRAMES, TITLES, TEAMS, catalogWith, frameHasCrown, type TeamId } from "./catalog";
 import { EMPTY_MISSIONS, type MissionId } from "./missions";
 import { DEFAULT_SETTINGS, type AppSettings } from "./settings";
 import {
@@ -52,6 +52,7 @@ export type GameState = {
   claimedMissions: string[];
   chatSent: number;
   activeQuizId: string | null;
+  streakFrozen: boolean;
 };
 
 const EMPTY_STATE: GameState = {
@@ -75,6 +76,7 @@ const EMPTY_STATE: GameState = {
   claimedMissions: [],
   chatSent: 0,
   activeQuizId: null,
+  streakFrozen: false,
 };
 
 export function todayKey(d = new Date()) {
@@ -114,6 +116,7 @@ type Snapshot = {
     claimed_missions: string[];
     chat_sent: number;
     active_quiz_id: string | null;
+    streak_frozen?: boolean;
   };
   owned: string[];
   settings: AppSettings;
@@ -143,6 +146,7 @@ function toState(snap: Snapshot): GameState {
     claimedMissions: p.claimed_missions ?? [],
     chatSent: p.chat_sent,
     activeQuizId: p.active_quiz_id ?? null,
+    streakFrozen: Boolean(p.streak_frozen),
   };
 }
 
@@ -162,6 +166,8 @@ type Ctx = {
   teamLocked: boolean;
   settings: AppSettings;
   isAdmin: boolean;
+  teams: Record<TeamId, { id: TeamId; name: string; emoji: string; colorClass: string }>;
+  frameCrown: boolean;
   applySnapshot: (snap: unknown) => void;
   startQuiz: () => Promise<void>;
   abandonQuiz: () => Promise<void>;
@@ -337,9 +343,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setHydrated(false);
   }, []);
 
-  const avatar = AVATARS.find((a) => a.id === state.avatarId)?.value ?? "🦊";
-  const frameClass = FRAMES.find((f) => f.id === state.frameId)?.value ?? "ring-2 ring-border";
-  const title = TITLES.find((t) => t.id === state.titleId)?.value ?? "Novellino";
+  const catalog = catalogWith(settings.customAssets);
+  const avatar = catalog.avatars.find((a) => a.id === state.avatarId)?.value ?? "🦊";
+  const frameClass = catalog.frames.find((f) => f.id === state.frameId)?.value ?? "ring-2 ring-border";
+  const title = catalog.titles.find((t) => t.id === state.titleId)?.value ?? "Novellino";
+  const frameCrown = frameHasCrown(state.frameId, settings.customAssets);
+  const teams = {
+    fulmini: { ...TEAMS.fulmini, ...settings.teams.fulmini },
+    comete: { ...TEAMS.comete, ...settings.teams.comete },
+  };
 
   const value: Ctx = {
     hydrated,
@@ -357,6 +369,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     teamLocked: state.team !== null,
     settings,
     isAdmin,
+    teams,
+    frameCrown,
     applySnapshot: (snap: unknown) => apply(snap as Snapshot),
     startQuiz,
     abandonQuiz,
