@@ -57,3 +57,31 @@ export const TEAMS: Record<TeamId, { id: TeamId; name: string; emoji: string; co
   fulmini: { id: "fulmini", name: "Fulmini", emoji: "⚡", colorClass: "bg-team-a" },
   comete: { id: "comete", name: "Comete", emoji: "☄️", colorClass: "bg-team-b" },
 };
+
+/* ---------------- Personalizzazioni create dall'admin ---------------- */
+
+import type { CustomAsset } from "./settings";
+
+export function customToItem(a: CustomAsset): ShopItem {
+  return { id: a.id, kind: a.kind, name: a.name, price: a.price, value: a.value };
+}
+
+export function catalogWith(custom: CustomAsset[] | undefined) {
+  const list = (custom ?? []).map(customToItem);
+  return {
+    avatars: [...AVATARS, ...list.filter((i) => i.kind === "avatar")],
+    frames: [...FRAMES, ...list.filter((i) => i.kind === "frame")],
+    titles: [...TITLES, ...list.filter((i) => i.kind === "title")],
+    all: [...ALL_ITEMS, ...list],
+  };
+}
+
+export function findItemIn(id: string, custom: CustomAsset[] | undefined) {
+  return catalogWith(custom).all.find((i) => i.id === id);
+}
+
+/** Le cornici premio con corona 3D animata (catalogo base + personalizzate). */
+export function frameHasCrown(frameId: string, custom: CustomAsset[] | undefined) {
+  if (frameId === "fr-champion") return true;
+  return Boolean((custom ?? []).find((a) => a.id === frameId)?.crown);
+}
