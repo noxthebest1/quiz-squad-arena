@@ -154,10 +154,11 @@ export const buyItem = createServerFn({ method: "POST" })
   .inputValidator((input) => z.object({ itemId: z.string() }).parse(input))
   .handler(async ({ data, context }) => {
     const engine = await import("./engine.server");
-    const { findItem } = await import("./catalog");
+    const { findItemIn } = await import("./catalog");
 
     let profile = await engine.loadProfile(context.userId, "Sfidante");
-    const item = findItem(data.itemId);
+    const settings = await engine.getSettings();
+    const item = findItemIn(data.itemId, settings.customAssets);
     if (!item) throw new Error("Oggetto inesistente");
     if (item.price < 0) throw new Error("Oggetto riservato ai premi di fine stagione");
     if (profile.credits < item.price) throw new Error("Crediti insufficienti");
@@ -180,9 +181,10 @@ export const equipItem = createServerFn({ method: "POST" })
   .inputValidator((input) => z.object({ itemId: z.string() }).parse(input))
   .handler(async ({ data, context }) => {
     const engine = await import("./engine.server");
-    const { findItem } = await import("./catalog");
+    const { findItemIn } = await import("./catalog");
 
-    const item = findItem(data.itemId);
+    const settings = await engine.getSettings();
+    const item = findItemIn(data.itemId, settings.customAssets);
     if (!item) throw new Error("Oggetto inesistente");
 
     const owned = await engine.getOwned(context.userId);
@@ -341,6 +343,93 @@ export const adminNewSeason = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const engine = await import("./engine.server");
     await engine.assertAdmin(context.userId);
-    const season = await engine.startNewSeason();
-    return { season };
+    const { season, award } = await engine.startNewSeason();
+    return { season, award };
+  });
+
+export const adminUpdateTeams = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        fulmini: z.object({ name: z.string().min(1).max(20), emoji: z.string().min(1).max(4) }),
+        comete: z.object({ name: z.string().min(1).max(20), emoji: z.string().min(1).max(4) }),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    await engine.setSetting("teams", data);
+    return await engine.getSettings();
+  });
+
+export const adminUpdateSeasonPrizes = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        championFrameId: z.string().min(1).max(40),
+        teamTitleId: z.string().min(1).max(40),
+        showcase: z.object({
+          champion: z.object({
+            emoji: z.string().min(1).max(4),
+            title: z.string().min(1).max(40),
+            description: z.string().min(1).max(160),
+          }),
+          team: z.object({
+            emoji: z.string().min(1).max(4),
+            title: z.string().min(1).max(40),
+            description: z.string().min(1).max(160),
+          }),
+        }),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    await engine.setSetting("season_prizes", {
+      championFrameId: data.championFrameId,
+      teamTitleId: data.teamTitleId,
+    });
+    await engine.setSetting("showcase", data.showcase);
+    return await engine.getSettings();
+  });
+
+const customAssetSchema = z.object({
+  id: z.string().max(40).optional(),
+  kind: z.enum(["avatar", "frame", "title"]),
+  name: z.string().min(1).max(32),
+  price: z.number().int().min(-1).max(5000),
+  value: z.string().min(1).max(120),
+  crown: z.boolean().optional(),
+});
+
+export const adminSaveCustomAsset = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => customAssetSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    const settings = await engine.getSettings();
+    const id = data.id && data.id.startsWith("cu-") ? data.id : `cu-${Math.random().toString(36).slice(2, 10)}`;
+    const asset = { ...data, id, crown: data.kind === "frame" ? Boolean(data.crown) : false };
+    const list = settings.customAssets.filter((a) => a.id !== id);
+    await engine.setSetting("custom_assets", [...list, asset]);
+    return await engine.getSettings();
+  });
+
+export const adminDeleteCustomAsset = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ id: z.string().min(1).max(40) }).parse(input))
+  .handler(async ({ data, context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    const settings = await engine.getSettings();
+    await engine.setSetting(
+      "custom_assets",
+      settings.customAssets.filter((a) => a.id !== data.id),
+    );
+    return await engine.getSettings();
   });
