@@ -179,3 +179,25 @@
   background-clip: text;
   color: transparent;
 }
+
+/* Corona 3D animata sopra avatar/cornici premio */
+@keyframes crown-float-3d {
+  0%,
+  100% {
+    transform: translate(-50%, 0) rotateY(0deg) rotateX(12deg) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -18%) rotateY(180deg) rotateX(12deg) scale(1.08);
+  }
+}
+
+@utility crown-3d {
+  position: absolute;
+  top: -0.55em;
+  left: 50%;
+  z-index: 10;
+  transform-style: preserve-3d;
+  animation: crown-float-3d 2.6s ease-in-out infinite;
+  filter: drop-shadow(0 3px 4px rgb(0 0 0 / 0.25));
+  pointer-events: none;
+}
