@@ -112,6 +112,8 @@ export type Database = {
           nickname: string
           points: number
           streak_days: number
+          streak_frozen: boolean
+          streak_prize_season: number
           team: string | null
           team_week: string | null
           title_id: string
@@ -137,6 +139,8 @@ export type Database = {
           nickname?: string
           points?: number
           streak_days?: number
+          streak_frozen?: boolean
+          streak_prize_season?: number
           team?: string | null
           team_week?: string | null
           title_id?: string
@@ -162,6 +166,8 @@ export type Database = {
           nickname?: string
           points?: number
           streak_days?: number
+          streak_frozen?: boolean
+          streak_prize_season?: number
           team?: string | null
           team_week?: string | null
           title_id?: string

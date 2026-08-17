@@ -26,6 +26,8 @@ export type ProfileRow = {
   chat_sent: number;
   active_quiz_id: string | null;
   active_quiz_started_at: string | null;
+  streak_frozen: boolean;
+  streak_prize_season: number;
 };
 
 export type GameSnapshot = {
@@ -50,9 +52,32 @@ export function weekISO(d = new Date()) {
 
 const SELECT = "*";
 
+function yesterdayISO(d = new Date()) {
+  const x = new Date(d);
+  x.setUTCDate(x.getUTCDate() - 1);
+  return todayISO(x);
+}
+
 async function dailyReset(row: ProfileRow): Promise<ProfileRow> {
   const patch: ProfilePatch = {};
+  let streakReached7 = false;
+
   if (row.day !== todayISO()) {
+    // Streak: avanza solo se l'accesso precedente era ieri.
+    // Se è stato saltato un giorno, la streak resta congelata sul giorno raggiunto
+    // finché l'admin non esegue il reset globale.
+    let streak = row.streak_days;
+    let frozen = row.streak_frozen;
+    if (!row.day) {
+      streak = 1;
+    } else if (row.day === yesterdayISO()) {
+      if (!frozen) streak = Math.min(7, row.streak_days + 1);
+    } else {
+      frozen = true;
+    }
+    if (streak >= 7) frozen = true;
+    streakReached7 = streak >= 7;
+
     Object.assign(patch, {
       day: todayISO(),
       free_used: 0,
@@ -64,15 +89,33 @@ async function dailyReset(row: ProfileRow): Promise<ProfileRow> {
       chat_sent: 0,
       active_quiz_id: null,
       active_quiz_started_at: null,
-      streak_days: row.day ? Math.min(7, row.streak_days + 1) : 1,
+      streak_days: streak,
+      streak_frozen: frozen,
     });
   }
   if (row.team_week !== weekISO()) {
     Object.assign(patch, { team: null, team_week: null });
   }
   if (Object.keys(patch).length === 0) return row;
-  return await patchProfile(row.id, patch);
+  let next = await patchProfile(row.id, patch);
+
+  if (streakReached7) next = await grantStreakPrize(next);
+  return next;
 }
+
+/** Consegna davvero il premio streak (crediti + oggetto) una sola volta per stagione. */
+async function grantStreakPrize(row: ProfileRow): Promise<ProfileRow> {
+  const settings = await getSettings();
+  if (row.streak_prize_season >= settings.season.number) return row;
+
+  const prize = settings.streakPrize;
+  if (prize.itemId) await grantItem(row.id, prize.itemId);
+  return await patchProfile(row.id, {
+    credits: row.credits + (prize.credits ?? 0),
+    streak_prize_season: settings.season.number,
+  });
+}
+
 
 export async function patchProfile(userId: string, patch: ProfilePatch): Promise<ProfileRow> {
   const { data, error } = await supabaseAdmin
@@ -145,6 +188,9 @@ export async function getSettings(): Promise<AppSettings> {
     streakPrize: (map.get("streak_prize") as StreakPrize | undefined) ?? DEFAULT_SETTINGS.streakPrize,
     showcase: (map.get("showcase") as AppSettings["showcase"] | undefined) ?? DEFAULT_SETTINGS.showcase,
     season: (map.get("season") as { number: number } | undefined) ?? DEFAULT_SETTINGS.season,
+    teams: (map.get("teams") as AppSettings["teams"] | undefined) ?? DEFAULT_SETTINGS.teams,
+    seasonPrizes: (map.get("season_prizes") as AppSettings["seasonPrizes"] | undefined) ?? DEFAULT_SETTINGS.seasonPrizes,
+    customAssets: (map.get("custom_assets") as AppSettings["customAssets"] | undefined) ?? DEFAULT_SETTINGS.customAssets,
   };
 }
 
@@ -205,19 +251,77 @@ export async function resetChat() {
 }
 
 export async function resetStreaks() {
-  const { error } = await supabaseAdmin.from("profiles").update({ streak_days: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
+  const { error } = await supabaseAdmin.from("profiles").update({ streak_days: 0, streak_frozen: false }).neq("id", "00000000-0000-0000-0000-000000000000");
   if (error) throw new Error(error.message);
 }
 
-export async function startNewSeason(): Promise<number> {
+export type SeasonAward = {
+  championId: string | null;
+  championNickname: string | null;
+  championFrameId: string;
+  winningTeam: "fulmini" | "comete" | null;
+  teamTitleId: string;
+  teamMembers: number;
+};
+
+/** Assegna davvero i premi di fine stagione prima dell'azzeramento dei punti. */
+export async function awardSeasonPrizes(): Promise<SeasonAward> {
+  const settings = await getSettings();
+  const { championFrameId, teamTitleId } = settings.seasonPrizes;
+
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id, nickname, points, team")
+    .order("points", { ascending: false });
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as { id: string; nickname: string; points: number; team: string | null }[];
+
+  const champion = rows.find((r) => r.points > 0) ?? null;
+  if (champion && championFrameId) {
+    await grantItem(champion.id, championFrameId);
+    await patchProfile(champion.id, { frame_id: championFrameId });
+  }
+
+  const totals: Record<string, number> = { fulmini: 0, comete: 0 };
+  for (const r of rows) if (r.team && r.team in totals) totals[r.team] = (totals[r.team] ?? 0) + r.points;
+
+  let winningTeam: "fulmini" | "comete" | null = null;
+  if (totals["fulmini"] !== totals["comete"]) {
+    winningTeam = (totals["fulmini"] ?? 0) > (totals["comete"] ?? 0) ? "fulmini" : "comete";
+  }
+
+  let teamMembers = 0;
+  if (winningTeam && teamTitleId) {
+    const members = rows.filter((r) => r.team === winningTeam);
+    teamMembers = members.length;
+    for (const m of members) {
+      await grantItem(m.id, teamTitleId);
+      await patchProfile(m.id, { title_id: teamTitleId });
+    }
+  }
+
+  return {
+    championId: champion?.id ?? null,
+    championNickname: champion?.nickname ?? null,
+    championFrameId,
+    winningTeam,
+    teamTitleId,
+    teamMembers,
+  };
+}
+
+export async function startNewSeason(): Promise<{ season: number; award: SeasonAward }> {
   const settings = await getSettings();
   const next = settings.season.number + 1;
+
+  const award = await awardSeasonPrizes();
+
   const { error } = await supabaseAdmin
     .from("profiles")
-    .update({ points: 0, streak_days: 0, team: null, team_week: null })
+    .update({ points: 0, streak_days: 0, streak_frozen: false, team: null, team_week: null })
     .neq("id", "00000000-0000-0000-0000-000000000000");
   if (error) throw new Error(error.message);
   await setSetting("season", { number: next });
   await resetChat();
-  return next;
+  return { season: next, award };
 }
