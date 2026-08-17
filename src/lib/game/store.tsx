@@ -11,7 +11,7 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { BONUS_ORDER, FREE_ORDER, QUIZZES, type Difficulty, type Quiz } from "./quizzes";
-import { AVATARS, FRAMES, TITLES, TEAMS, catalogWith, frameHasCrown, type TeamId } from "./catalog";
+import { TEAMS, catalogWith, frameHasCrown, type TeamId } from "./catalog";
 import { EMPTY_MISSIONS, type MissionId } from "./missions";
 import { DEFAULT_SETTINGS, type AppSettings } from "./settings";
 import {
