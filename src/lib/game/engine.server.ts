@@ -50,9 +50,32 @@ export function weekISO(d = new Date()) {
 
 const SELECT = "*";
 
+function yesterdayISO(d = new Date()) {
+  const x = new Date(d);
+  x.setUTCDate(x.getUTCDate() - 1);
+  return todayISO(x);
+}
+
 async function dailyReset(row: ProfileRow): Promise<ProfileRow> {
   const patch: ProfilePatch = {};
+  let streakReached7 = false;
+
   if (row.day !== todayISO()) {
+    // Streak: avanza solo se l'accesso precedente era ieri.
+    // Se è stato saltato un giorno, la streak resta congelata sul giorno raggiunto
+    // finché l'admin non esegue il reset globale.
+    let streak = row.streak_days;
+    let frozen = row.streak_frozen;
+    if (!row.day) {
+      streak = 1;
+    } else if (row.day === yesterdayISO()) {
+      if (!frozen) streak = Math.min(7, row.streak_days + 1);
+    } else {
+      frozen = true;
+    }
+    if (streak >= 7) frozen = true;
+    streakReached7 = streak >= 7;
+
     Object.assign(patch, {
       day: todayISO(),
       free_used: 0,
@@ -64,15 +87,33 @@ async function dailyReset(row: ProfileRow): Promise<ProfileRow> {
       chat_sent: 0,
       active_quiz_id: null,
       active_quiz_started_at: null,
-      streak_days: row.day ? Math.min(7, row.streak_days + 1) : 1,
+      streak_days: streak,
+      streak_frozen: frozen,
     });
   }
   if (row.team_week !== weekISO()) {
     Object.assign(patch, { team: null, team_week: null });
   }
   if (Object.keys(patch).length === 0) return row;
-  return await patchProfile(row.id, patch);
+  let next = await patchProfile(row.id, patch);
+
+  if (streakReached7) next = await grantStreakPrize(next);
+  return next;
 }
+
+/** Consegna davvero il premio streak (crediti + oggetto) una sola volta per stagione. */
+async function grantStreakPrize(row: ProfileRow): Promise<ProfileRow> {
+  const settings = await getSettings();
+  if (row.streak_prize_season >= settings.season.number) return row;
+
+  const prize = settings.streakPrize;
+  if (prize.itemId) await grantItem(row.id, prize.itemId);
+  return await patchProfile(row.id, {
+    credits: row.credits + (prize.credits ?? 0),
+    streak_prize_season: settings.season.number,
+  });
+}
+
 
 export async function patchProfile(userId: string, patch: ProfilePatch): Promise<ProfileRow> {
   const { data, error } = await supabaseAdmin
