@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useGame } from "@/lib/game/store";
 import {
   adminNewSeason,
@@ -9,8 +10,15 @@ import {
   adminResetStreaks,
   adminUpdateStreakPrize,
   adminUpdateWheel,
+  adminUpdateTeams,
+  adminUpdateSeasonPrizes,
+  adminSaveCustomAsset,
+  adminDeleteCustomAsset,
 } from "@/lib/game/game.functions";
-import type { AppSettings, WheelPrize } from "@/lib/game/settings";
+import { catalogWith } from "@/lib/game/catalog";
+import type { AppSettings, CustomAsset, WheelPrize } from "@/lib/game/settings";
+import { cn } from "@/lib/utils";
+
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
