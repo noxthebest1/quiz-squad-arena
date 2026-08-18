@@ -319,7 +319,10 @@ export const adminUpdateStreakPrize = createServerFn({ method: "POST" })
         emoji: z.string().min(1).max(4),
         label: z.string().min(1).max(40),
         description: z.string().min(1).max(140),
+        credits: z.number().int().min(0).max(5000).optional(),
+        itemId: z.string().max(40).nullable().optional(),
       })
+
       .parse(input),
   )
   .handler(async ({ data, context }) => {
