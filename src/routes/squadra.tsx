@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { useGame, isMonday, TEAMS } from "@/lib/game/store";
+import { useGame, isMonday } from "@/lib/game/store";
 import { assignedTeam, swapAllowed } from "@/lib/game/roster";
 import type { TeamId } from "@/lib/game/catalog";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,7 @@ export const Route = createFileRoute("/squadra")({
 });
 
 function TeamPage() {
-  const { state, chooseTeam, hydrated } = useGame();
+  const { state, chooseTeam, hydrated, teams: TEAMS } = useGame();
   const [busy, setBusy] = useState<TeamId | null>(null);
   const monday = isMonday();
   const proposed = assignedTeam();

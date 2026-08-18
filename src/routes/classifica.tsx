@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PlayerChip } from "@/components/PlayerChip";
-import { useGame, TEAMS } from "@/lib/game/store";
+import { useGame } from "@/lib/game/store";
 import { RIVALS } from "@/lib/game/roster";
 import type { TeamId } from "@/lib/game/catalog";
 import { cn } from "@/lib/utils";
@@ -19,7 +19,7 @@ export const Route = createFileRoute("/classifica")({
 });
 
 function LeaderboardPage() {
-  const { state, avatar, frameClass, title, hydrated } = useGame();
+  const { state, avatar, frameClass, title, hydrated, teams: TEAMS } = useGame();
 
   const players = [
     ...RIVALS,
