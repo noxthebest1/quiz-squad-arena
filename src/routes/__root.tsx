@@ -12,9 +12,9 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ThemeProvider } from "../lib/theme";
-import { GameProvider } from "../lib/game/store";
-import { AppNav } from "../components/AppNav";
-import { AuthGate } from "../components/AuthGate";
+import { GameProvider } from "@/lib/game/store";
+import { AppNav } from "@/components/AppNav";
+import { AuthGate } from "@/components/AuthGate";
 import { Toaster } from "../components/ui/sonner";
 
 function NotFoundComponent() {
