@@ -35,13 +35,21 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
+const EMPTY_DRAFT: CustomAsset = { id: "", kind: "avatar", name: "", price: 50, value: "", crown: false };
+
 function AdminPage() {
   const { isAdmin, hydrated, settings, refresh } = useGame();
   const [prizes, setPrizes] = useState<WheelPrize[]>(settings.wheelPrizes);
   const [streak, setStreak] = useState(settings.streakPrize);
+  const [teams, setTeams] = useState(settings.teams);
+  const [prizesCfg, setPrizesCfg] = useState(settings.seasonPrizes);
+  const [showcase, setShowcase] = useState(settings.showcase);
+  const [draft, setDraft] = useState<CustomAsset>(EMPTY_DRAFT);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const catalog = catalogWith(settings.customAssets);
+
 
   async function run(key: string, fn: () => Promise<string>) {
     setBusy(key);
