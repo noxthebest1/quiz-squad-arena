@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { PlayerChip } from "@/components/PlayerChip";
@@ -5,7 +6,7 @@ import { PrizeShowcase } from "@/components/PrizeShowcase";
 import { MorningWheel } from "@/components/MorningWheel";
 import { WeeklyStreak } from "@/components/WeeklyStreak";
 import { useGame } from "@/lib/game/store";
-import { RIVALS } from "@/lib/game/roster";
+import { fetchLeaderboard } from "@/lib/game/game.functions";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -23,11 +24,23 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   const { state, avatar, frameClass, title, ticketsLeft, bonusLeft, hydrated, teamLocked } = useGame();
 
-  const totalRank = [
-    ...RIVALS.map((r) => ({ name: r.name, points: r.points })),
-    { name: state.nickname, points: state.points },
-  ].sort((a, b) => b.points - a.points);
-  const myPos = totalRank.findIndex((r) => r.name === state.nickname) + 1;
+  const { user } = useGame();
+  const [myPos, setMyPos] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    void fetchLeaderboard()
+      .then((res) => {
+        const players = (res as { players: { id: string }[] }).players;
+        const idx = players.findIndex((p) => p.id === user.id);
+        if (alive) setMyPos(idx >= 0 ? idx + 1 : null);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [user, state.points]);
 
   return (
     <div className="space-y-6">
@@ -45,7 +58,7 @@ function HomePage() {
             />
             <div className="shrink-0 rounded-2xl bg-card/90 px-4 py-2 text-center">
               <p className="text-[10px] font-bold uppercase text-muted-foreground">Posizione</p>
-              <p className="font-display text-2xl font-extrabold">#{hydrated ? myPos : "-"}</p>
+              <p className="font-display text-2xl font-extrabold">#{myPos ?? "-"}</p>
             </div>
           </div>
         </div>
