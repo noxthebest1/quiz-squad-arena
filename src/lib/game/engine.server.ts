@@ -322,3 +322,55 @@ export async function startNewSeason(): Promise<{ season: number; award: SeasonA
   await resetChat();
   return { season: next, award };
 }
+
+/* ---------------- Impostazioni programmate (_next) ---------------- */
+
+/** Valori programmati dall'admin: mai mostrati agli utenti, solo nell'editor admin. */
+export async function getNextSettings(): Promise<Pick<AppSettings, "wheelPrizes" | "streakPrize" | "seasonPrizes">> {
+  const current = await getSettings();
+  const { data, error } = await supabaseAdmin.from("app_settings").select("key, value");
+  if (error) throw new Error(error.message);
+  const map = new Map((data ?? []).map((r) => [r.key as string, r.value as unknown]));
+  return {
+    wheelPrizes: (map.get("wheel_prizes_next") as WheelPrize[] | undefined) ?? current.wheelPrizes,
+    streakPrize: (map.get("streak_prize_next") as StreakPrize | undefined) ?? current.streakPrize,
+    seasonPrizes: (map.get("season_prizes_next") as AppSettings["seasonPrizes"] | undefined) ?? current.seasonPrizes,
+  };
+}
+
+/* ---------------- Classifica reale ---------------- */
+
+export type LeaderRow = {
+  id: string;
+  nickname: string;
+  avatar_id: string;
+  frame_id: string;
+  title_id: string;
+  points: number;
+  team: "fulmini" | "comete" | null;
+};
+
+export async function listLeaderboard(): Promise<LeaderRow[]> {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id, nickname, avatar_id, frame_id, title_id, points, team")
+    .order("points", { ascending: false })
+    .limit(200);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as LeaderRow[];
+}
+
+/** Membri per squadra nella settimana corrente (usato per il bilanciamento). */
+export async function teamMemberCounts(): Promise<{ fulmini: number; comete: number }> {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("team")
+    .eq("team_week", weekISO());
+  if (error) throw new Error(error.message);
+  const counts = { fulmini: 0, comete: 0 };
+  for (const r of (data ?? []) as { team: string | null }[]) {
+    if (r.team === "fulmini") counts.fulmini += 1;
+    else if (r.team === "comete") counts.comete += 1;
+  }
+  return counts;
+}
