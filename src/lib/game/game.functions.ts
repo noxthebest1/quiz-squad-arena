@@ -328,7 +328,7 @@ export const adminUpdateStreakPrize = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const engine = await import("./engine.server");
     await engine.assertAdmin(context.userId);
-    await engine.setSetting("streak_prize", data);
+    await engine.setSetting("streak_prize_next", data);
     return await engine.getSettings();
   });
 
