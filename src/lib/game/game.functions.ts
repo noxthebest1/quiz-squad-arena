@@ -308,7 +308,7 @@ export const adminUpdateWheel = createServerFn({ method: "POST" })
     const engine = await import("./engine.server");
     await engine.assertAdmin(context.userId);
     await engine.setSetting("wheel_prizes_next", data.prizes);
-    return await engine.getSettings();
+    return await engine.getNextSettings();
   });
 
 export const adminUpdateStreakPrize = createServerFn({ method: "POST" })
@@ -329,7 +329,7 @@ export const adminUpdateStreakPrize = createServerFn({ method: "POST" })
     const engine = await import("./engine.server");
     await engine.assertAdmin(context.userId);
     await engine.setSetting("streak_prize_next", data);
-    return await engine.getSettings();
+    return await engine.getNextSettings();
   });
 
 export const adminResetStreaks = createServerFn({ method: "POST" })
@@ -436,4 +436,23 @@ export const adminDeleteCustomAsset = createServerFn({ method: "POST" })
       settings.customAssets.filter((a) => a.id !== data.id),
     );
     return await engine.getSettings();
+  });
+
+/* ---------------- Classifica reale (server-authoritative) ---------------- */
+
+export const fetchLeaderboard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const engine = await import("./engine.server");
+    const [players, counts] = await Promise.all([engine.listLeaderboard(), engine.teamMemberCounts()]);
+    return { players, counts };
+  });
+
+/** Valori programmati (_next) visibili solo all'admin nell'editor. */
+export const adminFetchNextSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const engine = await import("./engine.server");
+    await engine.assertAdmin(context.userId);
+    return await engine.getNextSettings();
   });
