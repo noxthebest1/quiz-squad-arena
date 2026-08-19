@@ -63,19 +63,15 @@ async function dailyReset(row: ProfileRow): Promise<ProfileRow> {
   let streakReached7 = false;
 
   if (row.day !== todayISO()) {
-    // Streak: avanza solo se l'accesso precedente era ieri.
-    // Se è stato saltato un giorno, la streak resta congelata sul giorno raggiunto
-    // finché l'admin non esegue il reset globale.
-    let streak = row.streak_days;
-    let frozen = row.streak_frozen;
+    // Streak: avanza solo se l'accesso precedente era ieri, altrimenti riparte da oggi.
+    let streak: number;
     if (!row.day) {
       streak = 1;
     } else if (row.day === yesterdayISO()) {
-      if (!frozen) streak = Math.min(7, row.streak_days + 1);
+      streak = Math.min(7, row.streak_days + 1);
     } else {
-      frozen = true;
+      streak = 1;
     }
-    if (streak >= 7) frozen = true;
     streakReached7 = streak >= 7;
 
     Object.assign(patch, {
@@ -90,7 +86,7 @@ async function dailyReset(row: ProfileRow): Promise<ProfileRow> {
       active_quiz_id: null,
       active_quiz_started_at: null,
       streak_days: streak,
-      streak_frozen: frozen,
+      streak_frozen: false,
     });
   }
   if (row.team_week !== weekISO()) {
@@ -102,6 +98,7 @@ async function dailyReset(row: ProfileRow): Promise<ProfileRow> {
   if (streakReached7) next = await grantStreakPrize(next);
   return next;
 }
+
 
 /** Consegna davvero il premio streak (crediti + oggetto) una sola volta per stagione. */
 async function grantStreakPrize(row: ProfileRow): Promise<ProfileRow> {
