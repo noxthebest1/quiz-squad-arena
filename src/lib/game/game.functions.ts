@@ -307,7 +307,7 @@ export const adminUpdateWheel = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const engine = await import("./engine.server");
     await engine.assertAdmin(context.userId);
-    await engine.setSetting("wheel_prizes", data.prizes);
+    await engine.setSetting("wheel_prizes_next", data.prizes);
     return await engine.getSettings();
   });
 
