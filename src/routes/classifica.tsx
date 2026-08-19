@@ -1,9 +1,10 @@
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PlayerChip } from "@/components/PlayerChip";
 import { useGame } from "@/lib/game/store";
-import { RIVALS } from "@/lib/game/roster";
-import type { TeamId } from "@/lib/game/catalog";
+import { fetchLeaderboard } from "@/lib/game/game.functions";
+import { catalogWith, type TeamId } from "@/lib/game/catalog";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/classifica")({
@@ -18,32 +19,44 @@ export const Route = createFileRoute("/classifica")({
   component: LeaderboardPage,
 });
 
+type LeaderRow = {
+  id: string;
+  nickname: string;
+  avatar_id: string;
+  frame_id: string;
+  title_id: string;
+  points: number;
+  team: TeamId | null;
+};
+
 function LeaderboardPage() {
-  const { state, avatar, frameClass, title, hydrated, teams: TEAMS } = useGame();
+  const { user, settings, teams: TEAMS } = useGame();
+  const [rows, setRows] = useState<LeaderRow[] | null>(null);
+  const catalog = catalogWith(settings.customAssets);
 
-  const players = [
-    ...RIVALS,
-    {
-      id: "me",
-      name: hydrated ? state.nickname : "Tu",
-      avatar,
-      frameClass,
-      title,
-      team: state.team ?? "fulmini",
-      points: hydrated ? state.points : 0,
-    },
-  ].sort((a, b) => b.points - a.points);
+  useEffect(() => {
+    let alive = true;
+    void fetchLeaderboard()
+      .then((res) => {
+        if (alive) setRows((res as { players: LeaderRow[] }).players);
+      })
+      .catch(() => alive && setRows([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-  const teamTotals = (Object.keys(TEAMS) as TeamId[]).map((id) => ({
-    id,
-    points: players.filter((p) => p.team === id).reduce((s, p) => s + p.points, 0),
-  })).sort((a, b) => b.points - a.points);
+  if (!rows) return <p className="text-sm text-muted-foreground">Caricamento classifica…</p>;
+
+  const teamTotals = (Object.keys(TEAMS) as TeamId[])
+    .map((id) => ({ id, points: rows.filter((p) => p.team === id).reduce((s, p) => s + p.points, 0) }))
+    .sort((a, b) => b.points - a.points);
 
   return (
     <div className="space-y-5">
       <header>
         <h1 className="text-2xl">Classifiche</h1>
-        <p className="text-sm text-muted-foreground">Stagione in corso</p>
+        <p className="text-sm text-muted-foreground">Stagione #{settings.season.number}</p>
       </header>
 
       <Tabs defaultValue="generale">
@@ -53,18 +66,26 @@ function LeaderboardPage() {
         </TabsList>
 
         <TabsContent value="generale" className="mt-4 space-y-3">
-          {players.map((p, i) => (
+          {rows.length === 0 && <p className="text-sm text-muted-foreground">Nessun giocatore in classifica.</p>}
+          {rows.map((p, i) => (
             <div
               key={p.id}
               className={cn(
                 "card-fun grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-3",
-                p.id === "me" && "border-primary",
+                p.id === user?.id && "border-primary",
               )}
             >
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-muted font-display font-extrabold">
                 {i === 0 ? "👑" : i + 1}
               </span>
-              <PlayerChip name={p.name} avatar={p.avatar} frameClass={p.frameClass} title={p.title} team={p.team as TeamId} size="sm" />
+              <PlayerChip
+                name={p.nickname}
+                avatar={catalog.avatars.find((a) => a.id === p.avatar_id)?.value ?? "🦊"}
+                frameClass={catalog.frames.find((f) => f.id === p.frame_id)?.value ?? "ring-2 ring-border"}
+                title={catalog.titles.find((t) => t.id === p.title_id)?.value ?? "Novellino"}
+                team={p.team}
+                size="sm"
+              />
               <span className="shrink-0 font-display font-extrabold">⭐ {p.points}</span>
             </div>
           ))}
