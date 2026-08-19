@@ -392,12 +392,13 @@ export const adminUpdateSeasonPrizes = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const engine = await import("./engine.server");
     await engine.assertAdmin(context.userId);
-    await engine.setSetting("season_prizes", {
+    await engine.setSetting("season_prizes_next", {
       championFrameId: data.championFrameId,
       teamTitleId: data.teamTitleId,
     });
     await engine.setSetting("showcase", data.showcase);
-    return await engine.getSettings();
+    return await engine.getNextSettings();
+
   });
 
 const customAssetSchema = z.object({
